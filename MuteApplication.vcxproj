@@ -115,6 +115,7 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="clipboard.txt" />
+    <Text Include="findendpoints.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

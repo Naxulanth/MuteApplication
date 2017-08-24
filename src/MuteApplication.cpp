@@ -18,7 +18,7 @@ const IID IID_IMMDeviceEnumerator = __uuidof(IMMDeviceEnumerator);
 
 
 #define SAFE_RELEASE(p)  \
-              if ((p) != NULL)  \
+			   if ((p) != NULL)  \
                 { (p)->Release(); (p) = NULL; } 
 
 void failCheck(HRESULT hres, IMMDeviceEnumerator *pEnumerator, IMMDevice *pEndpoint, IPropertyStore *pProps, IMMDeviceCollection *pCollection,
@@ -36,7 +36,7 @@ void failCheck(HRESULT hres, IMMDeviceEnumerator *pEnumerator, IMMDevice *pEndpo
 	}
 }
 
-void printEndpoints() {
+void findEndpoint() {
 	HRESULT hr = S_OK;
 	IMMDeviceEnumerator *pEnumerator = NULL;
 	IMMDeviceCollection *pCollection = NULL;
@@ -45,6 +45,8 @@ void printEndpoints() {
 	LPWSTR pwszID = NULL;
 
 	UINT  count;
+
+	PROPVARIANT varName;
 
 	// Initialize COM library
 	hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
@@ -59,54 +61,44 @@ void printEndpoints() {
 		eRender, DEVICE_STATE_ACTIVE,
 		&pCollection);
 	failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
-	system("pause");
 	hr = pCollection->GetCount(&count);
 	failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
-
 	if (count == 0)
 	{
 		printf("No endpoints found.\n");
 	}
+	// Get default endpoint
+	hr = pEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &pEndpoint);
+	failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
+	// Get the endpoint ID
+	hr = pEndpoint->GetId(&pwszID);
+	failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
 
-	// Each loop prints the name of an endpoint device.
-	for (ULONG i = 0; i < count; i++)
-	{
-		PROPVARIANT varName;
+	hr = pEndpoint->OpenPropertyStore(
+		STGM_READ, &pProps);
+	failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
 
-		// Get pointer to endpoint number i.
-		hr = pCollection->Item(i, &pEndpoint);
-		failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
+	// Initialize container for property value.
+	PropVariantInit(&varName);
 
-			// Get the endpoint ID string.
-			hr = pEndpoint->GetId(&pwszID);
-			failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
+	// Get the endpoint's friendly name.
+	hr = pProps->GetValue(
+		PKEY_Device_FriendlyName, &varName);
+	failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
 
-			hr = pEndpoint->OpenPropertyStore(
-				STGM_READ, &pProps);
-			failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
+	// Print endpoint friendly name and endpoint ID.
+	printf("Default endpoint: \"%S\" (%S)\n", varName.pwszVal, pwszID);
 
-
-		// Initialize container for property value.
-		PropVariantInit(&varName);
-
-		// Get the endpoint's friendly-name property.
-		hr = pProps->GetValue(
-			PKEY_Device_FriendlyName, &varName);
-		failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
-
-			// Print endpoint friendly name and endpoint ID.
-			printf("Endpoint %d: \"%S\" (%S)\n",
-				i, varName.pwszVal, pwszID);
-
-		CoTaskMemFree(pwszID);
-		pwszID = NULL;
-		PropVariantClear(&varName);
-		SAFE_RELEASE(pProps)
-			SAFE_RELEASE(pEndpoint)
-	}
+	// Cleanup
+	CoTaskMemFree(pwszID);
+	pwszID = NULL;
+	PropVariantClear(&varName);
+	SAFE_RELEASE(pProps)
+	SAFE_RELEASE(pEndpoint)
 	SAFE_RELEASE(pEnumerator)
-		SAFE_RELEASE(pCollection)
-		return;
+	SAFE_RELEASE(pCollection)
+	system("pause");
+	return;
 }
 
 
@@ -117,7 +109,7 @@ int main() {
 	while (GetMessage(&msg, NULL, 0, 0) != 0) {
 		if (msg.message == WM_HOTKEY) {
 			if (msg.wParam = 1) {
-				printEndpoints();
+				findEndpoint();
 			}
 			if (msg.wParam = 2) {
 				break;

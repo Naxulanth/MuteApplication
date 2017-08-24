@@ -23,5 +23,8 @@
     <Text Include="clipboard.txt">
       <Filter>Source Files</Filter>
     </Text>
+    <Text Include="findendpoints.txt">
+      <Filter>Source Files</Filter>
+    </Text>
   </ItemGroup>
 </Project>
