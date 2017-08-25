@@ -15,14 +15,21 @@ MSG msg = { 0 };
 
 const CLSID CLSID_MMDeviceEnumerator = __uuidof(MMDeviceEnumerator);
 const IID IID_IMMDeviceEnumerator = __uuidof(IMMDeviceEnumerator);
+const IID IID_IAudioClient = __uuidof(IAudioClient);
+const IID IID_ISimpleAudioVolume = __uuidof(ISimpleAudioVolume);
 
+#define REFTIMES_PER_SEC  10000000
+#define REFTIMES_PER_MILLISEC  10000
+
+#define EXIT_ON_ERROR(hres)  \
+              if (FAILED(hres)) { goto exit; }
 
 #define SAFE_RELEASE(p)  \
 			   if ((p) != NULL)  \
                 { (p)->Release(); (p) = NULL; } 
 
 void failCheck(HRESULT hres, IMMDeviceEnumerator *pEnumerator, IMMDevice *pEndpoint, IPropertyStore *pProps, IMMDeviceCollection *pCollection,
-	LPWSTR pwszID) {
+	LPWSTR pwszID, IAudioClient *pClient) {
 	if (FAILED(hres)) {
 		// Decode error message
 		_com_error err(hres);
@@ -33,6 +40,7 @@ void failCheck(HRESULT hres, IMMDeviceEnumerator *pEnumerator, IMMDevice *pEndpo
 		SAFE_RELEASE(pCollection);
 		SAFE_RELEASE(pEndpoint);
 		SAFE_RELEASE(pProps);
+		SAFE_RELEASE(pClient);
 	}
 }
 
@@ -43,6 +51,10 @@ void findEndpoint() {
 	IMMDevice *pEndpoint = NULL;
 	IPropertyStore *pProps = NULL;
 	LPWSTR pwszID = NULL;
+	IAudioClient *pClient = NULL;
+	WAVEFORMATEX *wave = NULL;
+	ISimpleAudioVolume *pVolume = NULL;
+	REFERENCE_TIME ref = REFTIMES_PER_SEC;
 
 	UINT  count;
 
@@ -55,49 +67,70 @@ void findEndpoint() {
 		CLSID_MMDeviceEnumerator, NULL,
 		CLSCTX_ALL, IID_IMMDeviceEnumerator,
 		(void**)&pEnumerator);
-	failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
-	// Enumerate endpoints
-	hr = pEnumerator->EnumAudioEndpoints(
-		eRender, DEVICE_STATE_ACTIVE,
-		&pCollection);
-	failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
-	hr = pCollection->GetCount(&count);
-	failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
-	if (count == 0)
-	{
-		printf("No endpoints found.\n");
-	}
+	EXIT_ON_ERROR(hr)
+		// Enumerate endpoints
+		hr = pEnumerator->EnumAudioEndpoints(
+			eRender, DEVICE_STATE_ACTIVE,
+			&pCollection);
+	EXIT_ON_ERROR(hr)
+		hr = pCollection->GetCount(&count);
+	EXIT_ON_ERROR(hr)
+		if (count == 0)
+		{
+			printf("No endpoints found.\n");
+		}
 	// Get default endpoint
 	hr = pEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &pEndpoint);
-	failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
-	// Get the endpoint ID
-	hr = pEndpoint->GetId(&pwszID);
-	failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
+	EXIT_ON_ERROR(hr)
+		// Get the endpoint ID
+		hr = pEndpoint->GetId(&pwszID);
+	EXIT_ON_ERROR(hr)
 
-	hr = pEndpoint->OpenPropertyStore(
-		STGM_READ, &pProps);
-	failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
+		hr = pEndpoint->OpenPropertyStore(
+			STGM_READ, &pProps);
+	EXIT_ON_ERROR(hr)
 
-	// Initialize container for property value.
-	PropVariantInit(&varName);
+		// Initialize container for property value.
+		PropVariantInit(&varName);
 
 	// Get the endpoint's friendly name.
 	hr = pProps->GetValue(
 		PKEY_Device_FriendlyName, &varName);
-	failCheck(hr, pEnumerator, pEndpoint, pProps, pCollection, pwszID);
+	EXIT_ON_ERROR(hr)
 
-	// Print endpoint friendly name and endpoint ID.
-	printf("Default endpoint: \"%S\" (%S)\n", varName.pwszVal, pwszID);
+		// Print endpoint friendly name and endpoint ID.
+		printf("Default endpoint: \"%S\" (%S)\n", varName.pwszVal, pwszID);
 
-	// Cleanup
+	hr = pEndpoint->Activate(IID_IAudioClient, CLSCTX_ALL, NULL, (void**)&pClient);
+	EXIT_ON_ERROR(hr)
+
+		hr = pClient->GetMixFormat(&wave);
+	EXIT_ON_ERROR(hr)
+
+		hr = pClient->Initialize(AUDCLNT_SHAREMODE_SHARED, 0, ref, 0, wave, NULL);
+	EXIT_ON_ERROR(hr)
+
+		hr = pClient->GetService(IID_ISimpleAudioVolume, (void**)&pVolume);
+	EXIT_ON_ERROR(hr)
+
+		hr = pVolume->SetMute(TRUE, NULL);
+	EXIT_ON_ERROR(hr)
+
+		// Cleanup
+		exit:
+	_com_error err(hr);
+	LPCTSTR errMsg = err.ErrorMessage();
+	printf(errMsg);
 	CoTaskMemFree(pwszID);
 	pwszID = NULL;
 	PropVariantClear(&varName);
 	SAFE_RELEASE(pProps)
-	SAFE_RELEASE(pEndpoint)
-	SAFE_RELEASE(pEnumerator)
-	SAFE_RELEASE(pCollection)
-	system("pause");
+		SAFE_RELEASE(pEndpoint)
+		SAFE_RELEASE(pEnumerator)
+		SAFE_RELEASE(pCollection)
+		SAFE_RELEASE(pClient)
+		SAFE_RELEASE(pVolume)
+		system("pause");
 	return;
 }
 

@@ -261,3 +261,4 @@ __pycache__/
 *.pyc
 /clipboard.txt
 /clipboard.txt
+/findendpoints.txt
