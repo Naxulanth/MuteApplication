@@ -7,12 +7,26 @@
 #include <functiondiscoverykeys_devpkey.h>
 #include <comdef.h>
 
+// Macros
+
+#define REFTIMES_PER_SEC  10000000
+#define REFTIMES_PER_MILLISEC  10000
+
+// Exit on HRESULT error
+#define EXIT_ON_ERROR(hres)  \
+              if (FAILED(hres)) { goto exit; }
+
+// Release pointer
+#define SAFE_RELEASE(p)  \
+			   if ((p) != NULL)  \
+                { (p)->Release(); (p) = NULL; } 
 
 char title[256];
 std::string s_title;
 HWND hwnd;
 MSG msg = { 0 };
 
+// Enumerations
 const CLSID CLSID_MMDeviceEnumerator = __uuidof(MMDeviceEnumerator);
 const IID IID_IMMDeviceEnumerator = __uuidof(IMMDeviceEnumerator);
 const IID IID_IAudioClient = __uuidof(IAudioClient);
@@ -22,17 +36,8 @@ const IID IID_IAudioSessionControl = __uuidof(IAudioSessionControl);
 const IID IID_IAudioSessionManager2 = __uuidof(IAudioSessionManager2);
 const IID IID_IAudioSessionManager = __uuidof(IAudioSessionManager);
 
-#define REFTIMES_PER_SEC  10000000
-#define REFTIMES_PER_MILLISEC  10000
 
-#define EXIT_ON_ERROR(hres)  \
-              if (FAILED(hres)) { goto exit; }
-
-#define SAFE_RELEASE(p)  \
-			   if ((p) != NULL)  \
-                { (p)->Release(); (p) = NULL; } 
-
-void findEndpoint() {
+void muteProcess() {
     HRESULT hr = S_OK;
     IMMDeviceEnumerator *pEnumerator = NULL;
     IMMDeviceCollection *pCollection = NULL;
@@ -44,12 +49,12 @@ void findEndpoint() {
     ISimpleAudioVolume *psVolume = NULL;
     IMMDevice *pEndpoint = NULL;
     IPropertyStore *pProps = NULL;
-    LPWSTR pwszID = NULL;
     REFERENCE_TIME ref = REFTIMES_PER_SEC;
     UINT count;
     int sessionCount = 0;
     PROPVARIANT varName;
     DWORD pProcessId;
+    DWORD pid;
     GUID guid;
     LPCGUID pGuid = &guid; // lpcguid = pointer to constant guid
 
@@ -75,24 +80,22 @@ void findEndpoint() {
     // Get default endpoint
     hr = pEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &pEndpoint);
     EXIT_ON_ERROR(hr);
-    // Get the endpoint ID
-    hr = pEndpoint->GetId(&pwszID);
-    EXIT_ON_ERROR(hr);
 
+    // Get endpoint name
     hr = pEndpoint->OpenPropertyStore(
         STGM_READ, &pProps);
     EXIT_ON_ERROR(hr);
 
-    // Initialize container for property value.
     PropVariantInit(&varName);
 
-    // Get the endpoint's friendly name.
     hr = pProps->GetValue(
         PKEY_Device_FriendlyName, &varName);
     EXIT_ON_ERROR(hr);
 
-    // Print endpoint friendly name and endpoint ID.
+    // Print endpoint name
     printf("Default endpoint: \"%S\"\n", varName.pwszVal);
+
+    // Initialize necessary interfaces
 
     hr = pEndpoint->Activate(IID_IAudioSessionManager2, CLSCTX_ALL, NULL, (void**)&pManager2);
     EXIT_ON_ERROR(hr);
@@ -100,37 +103,45 @@ void findEndpoint() {
     hr = pEndpoint->Activate(IID_IAudioSessionManager, CLSCTX_ALL, NULL, (void**)&pManager);
     EXIT_ON_ERROR(hr);
 
+    // Enumerate all sessions
+
     hr = pManager2->GetSessionEnumerator(&pSessions);
     EXIT_ON_ERROR(hr);
+
+    // Get the amount of sessions
 
     hr = pSessions->GetCount(&sessionCount);
     EXIT_ON_ERROR(hr);
 
-    //  for (int i = 0; i < sessionCount; ++i)
-   //   {
-    SAFE_RELEASE(pControl);
-    BOOL mute;
+    // Search for the chosen process in all audio sessions, and toggle mute
 
-    hr = pSessions->GetSession(1, &pControl);
-    EXIT_ON_ERROR(hr);
-    hr = pControl->QueryInterface<IAudioSessionControl2>(&pControl2);
-    EXIT_ON_ERROR(hr);
-    pControl2->GetProcessId(&pProcessId);
-    std::cout << "Attached to PID: " + std::to_string(pProcessId) << std::endl;
-    pControl2->QueryInterface(IID_ISimpleAudioVolume, (void**)&psVolume);
-    EXIT_ON_ERROR(hr);
-    hr = psVolume->GetMute(&mute);
-    if (mute) hr = psVolume->SetMute(FALSE, NULL);
-    else hr = psVolume->SetMute(TRUE, NULL);
-    EXIT_ON_ERROR(hr);
-    //   }
+    for (int i = 0; i < sessionCount; ++i)
+    {
+        BOOL mute;
 
+        SAFE_RELEASE(pControl);
+
+        hr = pSessions->GetSession(i, &pControl);
+        EXIT_ON_ERROR(hr);
+        hr = pControl->QueryInterface<IAudioSessionControl2>(&pControl2);
+        EXIT_ON_ERROR(hr);
+        pControl2->GetProcessId(&pProcessId);
+        //  if (pProcessId = pid) {
+        std::cout << "Attached to PID: " + std::to_string(pProcessId) << std::endl;
+        pControl2->QueryInterface(IID_ISimpleAudioVolume, (void**)&psVolume);
+        EXIT_ON_ERROR(hr);
+        hr = psVolume->GetMute(&mute);
+        if (mute) hr = psVolume->SetMute(FALSE, NULL);
+        else hr = psVolume->SetMute(TRUE, NULL);
+        EXIT_ON_ERROR(hr);
+        //   }
+    }
+
+    // Cleanup
 exit:
     _com_error err(hr);
     LPCTSTR errMsg = err.ErrorMessage();
     printf(errMsg);
-    CoTaskMemFree(pwszID);
-    pwszID = NULL;
     PropVariantClear(&varName);
     SAFE_RELEASE(pSessions);
     SAFE_RELEASE(pManager2);
@@ -148,18 +159,19 @@ exit:
 
 int main() {
     std::cout << "Mute Focused Application" << std::endl;
+    // Register global hotkeys
     if (RegisterHotKey(NULL, 1, MOD_NOREPEAT, 0x70)) std::cout << (("Mute / Unmute: F1")) << std::endl; // 0x70 = F1	
     if (RegisterHotKey(NULL, 2, MOD_NOREPEAT, 0x73)) std::cout << (("Exit: F3")) << std::endl; // 0x73 = F4
     while (1) {
-    while (GetMessage(&msg, NULL, 0, 0) != 0) {
-        if (msg.message == WM_HOTKEY) {
-            if (msg.wParam = 1) {
-                findEndpoint();
-            }
-            if (msg.wParam = 2) {
-                break;
+        while (GetMessage(&msg, NULL, 0, 0) != 0) {
+            if (msg.message == WM_HOTKEY) {
+                if (msg.wParam = 1) {
+                    muteProcess();
+                }
+                if (msg.wParam = 2) {
+                    break;
+                }
             }
         }
     }
-}
 }
