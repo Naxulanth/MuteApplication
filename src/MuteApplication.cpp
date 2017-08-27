@@ -32,6 +32,33 @@ const IID IID_IAudioSessionManager = __uuidof(IAudioSessionManager);
 			   if ((p) != NULL)  \
                 { (p)->Release(); (p) = NULL; } 
 
+std::ostream& operator<<(std::ostream& os, REFGUID guid) {
+
+	os << std::uppercase;
+	os.width(8);
+	os << std::hex << guid.Data1 << '-';
+
+	os.width(4);
+	os << std::hex << guid.Data2 << '-';
+
+	os.width(4);
+	os << std::hex << guid.Data3 << '-';
+
+	os.width(2);
+	os << std::hex
+		<< static_cast<short>(guid.Data4[0])
+		<< static_cast<short>(guid.Data4[1])
+		<< '-'
+		<< static_cast<short>(guid.Data4[2])
+		<< static_cast<short>(guid.Data4[3])
+		<< static_cast<short>(guid.Data4[4])
+		<< static_cast<short>(guid.Data4[5])
+		<< static_cast<short>(guid.Data4[6])
+		<< static_cast<short>(guid.Data4[7]);
+	os << std::nouppercase;
+	return os;
+}
+
 void findEndpoint() {
 	HRESULT hr = S_OK;
 	IMMDeviceEnumerator *pEnumerator = NULL;
@@ -112,30 +139,30 @@ void findEndpoint() {
 		hr = pSessions->GetCount(&sessionCount);
 	EXIT_ON_ERROR(hr)
 
-
 		std::cout << sessionCount << std::endl;
 
-	 for (int index = 0; index < sessionCount; index++)
-	{
+	// for (int index = 0; index < sessionCount; index++)
+//	{
 		CoTaskMemFree(pProcessName);
 		SAFE_RELEASE(pControl);
 
-		hr = pSessions->GetSession(index, &pControl);
+		hr = pSessions->GetSession(25, &pControl);
 		EXIT_ON_ERROR(hr)
 			hr = pControl->GetDisplayName(&pProcessName);
 			processName = *pProcessName;
 		EXIT_ON_ERROR(hr)
 			hr = pControl->QueryInterface<IAudioSessionControl2>(&pControl2);
 		EXIT_ON_ERROR(hr)
-			hr = pControl2->GetGroupingParam(&guid);
+			hr = pControl->GetGroupingParam(&guid);
 		EXIT_ON_ERROR(hr)
 			hr = pControl2->GetProcessId(&pProcessId);
 		EXIT_ON_ERROR(hr)
-			std::cout << std::to_string(pProcessId) + "::::::::::::::::::" + std::to_string(index) + "^^^^^" + std::to_string(processName) << std::endl;
+			std::cout << std::to_string(pProcessId) + "::::::::::::::::::" + std::to_string(25) + "^^^^^" + std::to_string(processName) << std::endl;
 		hr = pManager->GetSimpleAudioVolume(pGuid, TRUE, &psVolume);
+		std::cout << *pGuid << std::endl;
 		EXIT_ON_ERROR(hr)
-			hr = psVolume->SetMute(FALSE, NULL);
-	}
+		hr = psVolume->SetMute(TRUE, NULL);
+//	}
 
 	exit:
 	_com_error err(hr);
