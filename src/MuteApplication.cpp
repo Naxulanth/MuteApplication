@@ -17,6 +17,9 @@ const CLSID CLSID_MMDeviceEnumerator = __uuidof(MMDeviceEnumerator);
 const IID IID_IMMDeviceEnumerator = __uuidof(IMMDeviceEnumerator);
 const IID IID_IAudioClient = __uuidof(IAudioClient);
 const IID IID_ISimpleAudioVolume = __uuidof(ISimpleAudioVolume);
+const IID IID_IAudioStreamVolume = __uuidof(IAudioStreamVolume);
+const IID IID_IAudioSessionControl = __uuidof(IAudioSessionControl);
+const IID IID_IAudioSessionManager2 = __uuidof(IAudioSessionManager2);
 
 #define REFTIMES_PER_SEC  10000000
 #define REFTIMES_PER_MILLISEC  10000
@@ -28,22 +31,6 @@ const IID IID_ISimpleAudioVolume = __uuidof(ISimpleAudioVolume);
 			   if ((p) != NULL)  \
                 { (p)->Release(); (p) = NULL; } 
 
-void failCheck(HRESULT hres, IMMDeviceEnumerator *pEnumerator, IMMDevice *pEndpoint, IPropertyStore *pProps, IMMDeviceCollection *pCollection,
-	LPWSTR pwszID, IAudioClient *pClient) {
-	if (FAILED(hres)) {
-		// Decode error message
-		_com_error err(hres);
-		LPCTSTR errMsg = err.ErrorMessage();
-		printf(errMsg);
-		CoTaskMemFree(pwszID);
-		SAFE_RELEASE(pEnumerator);
-		SAFE_RELEASE(pCollection);
-		SAFE_RELEASE(pEndpoint);
-		SAFE_RELEASE(pProps);
-		SAFE_RELEASE(pClient);
-	}
-}
-
 void findEndpoint() {
 	HRESULT hr = S_OK;
 	IMMDeviceEnumerator *pEnumerator = NULL;
@@ -53,12 +40,20 @@ void findEndpoint() {
 	LPWSTR pwszID = NULL;
 	IAudioClient *pClient = NULL;
 	WAVEFORMATEX *wave = NULL;
-	ISimpleAudioVolume *pVolume = NULL;
+	ISimpleAudioVolume *psVolume = NULL;
+	IAudioStreamVolume *pVolume = NULL;
 	REFERENCE_TIME ref = REFTIMES_PER_SEC;
-
-	UINT  count;
-
+	IAudioSessionControl *pControl = NULL;
+	IAudioSessionManager2 *pManager = NULL;
+	IAudioSessionEnumerator *pSessions = NULL;
+	IAudioSessionControl2 *pControl2 = NULL;
+	UINT count;
+	int sessionCount = 0;
+	LPWSTR pProcessName = NULL;
 	PROPVARIANT varName;
+	float pfLevel;
+	DWORD pProcessId;
+	
 
 	// Initialize COM library
 	hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
@@ -101,29 +96,41 @@ void findEndpoint() {
 		// Print endpoint friendly name and endpoint ID.
 		printf("Default endpoint: \"%S\" (%S)\n", varName.pwszVal, pwszID);
 
-	hr = pEndpoint->Activate(IID_IAudioClient, CLSCTX_ALL, NULL, (void**)&pClient);
+	hr = pEndpoint->Activate(IID_IAudioSessionManager2, CLSCTX_ALL, NULL, (void**)&pManager);
 	EXIT_ON_ERROR(hr)
 
-		hr = pClient->GetMixFormat(&wave);
+		hr = pManager->GetSessionEnumerator(&pSessions);
 	EXIT_ON_ERROR(hr)
 
-		hr = pClient->Initialize(AUDCLNT_SHAREMODE_SHARED, 0, ref, 0, wave, NULL);
+		hr = pSessions->GetCount(&sessionCount);
 	EXIT_ON_ERROR(hr)
 
-		hr = pClient->GetService(IID_ISimpleAudioVolume, (void**)&pVolume);
-	EXIT_ON_ERROR(hr)
+		std::cout << sessionCount << std::endl;
 
-		hr = pVolume->SetMute(TRUE, NULL);
-	EXIT_ON_ERROR(hr)
+	for (int index = 0; index < sessionCount; index++)
+	{
+		hr = pSessions->GetSession(index, &pControl);
+		EXIT_ON_ERROR(hr)
+			hr = pControl->GetDisplayName(&pProcessName);
+		EXIT_ON_ERROR(hr)
+			hr = pControl->QueryInterface<IAudioSessionControl2>(&pControl2);
+		EXIT_ON_ERROR(hr)
+			hr = pControl2->GetProcessId(&pProcessId);
+		EXIT_ON_ERROR(hr)
+			std::cout << std::to_string(pProcessId) + ":::::::::::::: " + std::to_string(index) << std::endl;
+	}
 
-		// Cleanup
-		exit:
+	// Cleanup
+exit:
 	_com_error err(hr);
 	LPCTSTR errMsg = err.ErrorMessage();
 	printf(errMsg);
 	CoTaskMemFree(pwszID);
+	CoTaskMemFree(wave);
 	pwszID = NULL;
 	PropVariantClear(&varName);
+	SAFE_RELEASE(pSessions);
+	SAFE_RELEASE(pManager);
 	SAFE_RELEASE(pProps)
 		SAFE_RELEASE(pEndpoint)
 		SAFE_RELEASE(pEnumerator)
