@@ -175,7 +175,7 @@ int main() {
                 }
                 if (msg.wParam == 2) {
                     std::cout << "a" << std::endl;
-                    break;
+                    break; 
                 }
             }
         }
