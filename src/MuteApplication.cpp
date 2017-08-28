@@ -174,7 +174,6 @@ int main() {
                     muteProcess(pid);
                 }
                 if (msg.wParam == 2) {
-                    std::cout << "a" << std::endl;
                     break;
                 }
             }
