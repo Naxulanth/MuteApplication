@@ -8,9 +8,8 @@
 #include <comdef.h>
 
 // Macros
-
-#define REFTIMES_PER_SEC  10000000
-#define REFTIMES_PER_MILLISEC  10000
+#define REFTIMES_PER_SEC 10000000
+#define REFTIMES_PER_MILLISEC 10000
 
 // Exit on HRESULT error
 #define EXIT_ON_ERROR(hres)  \
@@ -25,6 +24,7 @@ char title[256];
 std::string s_title;
 HWND hwnd;
 MSG msg = { 0 };
+DWORD pid;
 
 // Enumerations
 const CLSID CLSID_MMDeviceEnumerator = __uuidof(MMDeviceEnumerator);
@@ -37,7 +37,7 @@ const IID IID_IAudioSessionManager2 = __uuidof(IAudioSessionManager2);
 const IID IID_IAudioSessionManager = __uuidof(IAudioSessionManager);
 
 
-void muteProcess() {
+void muteProcess(DWORD pid) {
     HRESULT hr = S_OK;
     IMMDeviceEnumerator *pEnumerator = NULL;
     IMMDeviceCollection *pCollection = NULL;
@@ -54,9 +54,6 @@ void muteProcess() {
     int sessionCount = 0;
     PROPVARIANT varName;
     DWORD pProcessId;
-    DWORD pid;
-    GUID guid;
-    LPCGUID pGuid = &guid; // lpcguid = pointer to constant guid
 
     // Initialize COM library
     hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
@@ -126,22 +123,23 @@ void muteProcess() {
         hr = pControl->QueryInterface<IAudioSessionControl2>(&pControl2);
         EXIT_ON_ERROR(hr);
         pControl2->GetProcessId(&pProcessId);
-        //  if (pProcessId = pid) {
-        std::cout << "Attached to PID: " + std::to_string(pProcessId) << std::endl;
-        pControl2->QueryInterface(IID_ISimpleAudioVolume, (void**)&psVolume);
-        EXIT_ON_ERROR(hr);
-        hr = psVolume->GetMute(&mute);
-        if (mute) hr = psVolume->SetMute(FALSE, NULL);
-        else hr = psVolume->SetMute(TRUE, NULL);
-        EXIT_ON_ERROR(hr);
-        //   }
+        if (pProcessId == pid) {
+            std::cout << "Attached to PID: " + std::to_string(pProcessId) << std::endl;
+            pControl2->QueryInterface(IID_ISimpleAudioVolume, (void**)&psVolume);
+            EXIT_ON_ERROR(hr);
+            hr = psVolume->GetMute(&mute);
+            EXIT_ON_ERROR(hr);
+            if (mute) hr = psVolume->SetMute(FALSE, NULL);
+            else hr = psVolume->SetMute(TRUE, NULL);
+            EXIT_ON_ERROR(hr);
+        }
     }
 
     // Cleanup
 exit:
     _com_error err(hr);
     LPCTSTR errMsg = err.ErrorMessage();
-    printf(errMsg);
+    std::cout << errMsg << std::endl;
     PropVariantClear(&varName);
     SAFE_RELEASE(pSessions);
     SAFE_RELEASE(pManager2);
@@ -161,17 +159,24 @@ int main() {
     std::cout << "Mute Focused Application" << std::endl;
     // Register global hotkeys
     if (RegisterHotKey(NULL, 1, MOD_NOREPEAT, 0x70)) std::cout << (("Mute / Unmute: F1")) << std::endl; // 0x70 = F1	
-    if (RegisterHotKey(NULL, 2, MOD_NOREPEAT, 0x73)) std::cout << (("Exit: F3")) << std::endl; // 0x73 = F4
-    while (1) {
+    if (RegisterHotKey(NULL, 2, MOD_NOREPEAT, 0x72)) std::cout << (("Exit: F3")) << std::endl; // 0x72 = F3
         while (GetMessage(&msg, NULL, 0, 0) != 0) {
             if (msg.message == WM_HOTKEY) {
-                if (msg.wParam = 1) {
-                    muteProcess();
+                if (msg.wParam == 1) {
+                    // Open handle to focused window
+                    hwnd = GetForegroundWindow();
+                    // Pull pID from handle
+                    GetWindowThreadProcessId(hwnd, &pid);
+                    // Pull window name from handle
+                    GetWindowText(hwnd, title, sizeof(title));
+                    s_title = title;
+                    std::cout << "Window: " + s_title << std::endl;
+                    muteProcess(pid);
                 }
-                if (msg.wParam = 2) {
+                if (msg.wParam == 2) {
+                    std::cout << "a" << std::endl;
                     break;
                 }
             }
         }
     }
-}
